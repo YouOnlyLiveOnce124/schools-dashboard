@@ -3,18 +3,38 @@ import BaseTable from './components/UI/BaseTable.vue'
 import BasePagination from './components/UI/BasePagination.vue'
 import BaseInput from './components/UI/BaseInput.vue'
 import BaseButton from './components/UI/BaseButton.vue'
-import { useSchools } from './services/schoolsApi.js'
-import { onMounted, ref } from 'vue'
 import BaseSelect from './components/UI/BaseSelect.vue'
+import { useSchools } from './services/schoolsApi.js'
 import { getRegions } from './services/schoolsApi.js'
+import { ref, onMounted, watch } from 'vue'
 
-const { schools, loading, error, totalPages, currentPage, fetchSchools } = useSchools()
+const {
+  schools,
+  loading,
+  error,
+  totalPages,
+  currentPage,
+  currentRegion,
+  fetchSchools,
+  setRegionFilter,
+  clearError,
+} = useSchools()
 
 const searchValue = ref('')
 const errorPage = ref(1)
 // Добавляем новые данные для фильтров
 const regions = ref([])
 const selectedRegion = ref('')
+
+// Watcher для отслеживания изменения региона
+watch(selectedRegion, (newRegionId) => {
+  // Если выбрано пустое значение (Все регионы) - сбрасываем фильтр
+  if (newRegionId === '') {
+    setRegionFilter(null)
+  } else if (newRegionId) {
+    setRegionFilter(newRegionId)
+  }
+})
 
 const tableColumns = ref([
   { key: 'name', label: 'Название', sortable: true },
@@ -25,29 +45,39 @@ const tableColumns = ref([
 
 const handlePageChange = async (page) => {
   errorPage.value = page
-  await fetchSchools(page, 10)
+  clearError()
+  await fetchSchools(page, 10, currentRegion.value)
+}
+
+const handleFirstPage = async () => {
+  clearError()
+  await fetchSchools(1, 10, currentRegion.value)
 }
 
 const handleSearch = () => {
   currentPage.value = 1
-  fetchSchools(1, 10)
+  fetchSchools(1, 10, currentRegion.value)
 }
 
-const handleRetry = () => {
-  fetchSchools(currentPage.value, 10)
+const handleRetry = async () => {
+  clearError()
+  await fetchSchools(currentPage.value, 10, currentRegion.value)
 }
 
-onMounted(async () => {
-  // Загружаем школы
-  await fetchSchools(1, 10)
-
-  // Загружаем регионы для фильтра
+// Выносим загрузку регионов в отдельную функцию
+const loadRegions = async () => {
   try {
     regions.value = await getRegions()
     console.log('✅ Регионы загружены:', regions.value.length, 'шт.')
   } catch (error) {
     console.error('❌ Ошибка загрузки регионов:', error)
   }
+}
+
+// Обновленный onMounted
+onMounted(async () => {
+  // Параллельно загружаем школы и регионы
+  await Promise.all([fetchSchools(1, 10), loadRegions()])
 })
 </script>
 
@@ -56,12 +86,19 @@ onMounted(async () => {
     <h1>Таблица учреждений</h1>
     <!-- Добавляем фильтры -->
     <div class="filters-section">
-      <BaseSelect
-        v-model="selectedRegion"
-        :options="regions.map((r) => ({ value: r.id, label: r.name }))"
-        placeholder="Все регионы"
-      />
+      <div class="filter-group">
+        <label class="filter-label">Регион:</label>
+        <BaseSelect
+          v-model="selectedRegion"
+          :options="[
+            { value: '', label: 'Все регионы' }, // ← ДОБАВИЛИ ОПЦИЮ СБРОСА
+            ...regions.map((r) => ({ value: r.id, label: r.name })),
+          ]"
+          placeholder="Выберите регион"
+        />
+      </div>
     </div>
+
     <div class="search-section">
       <BaseInput v-model="searchValue" placeholder="Поиск школ..." @input="handleSearch" />
     </div>
@@ -77,8 +114,10 @@ onMounted(async () => {
       <p class="error-detail">Попробуйте выбрать другую страницу</p>
 
       <div class="button-group">
+        <!-- ИСПРАВЛЯЕМ: сохраняем регион при повторе -->
         <BaseButton @click="handleRetry" variant="primary">Повторить попытку</BaseButton>
-        <BaseButton @click="fetchSchools(1, 10)" variant="secondary">На первую страницу</BaseButton>
+        <!-- ИСПРАВЛЯЕМ: сохраняем регион при переходе на первую страницу -->
+        <BaseButton @click="handleFirstPage" variant="secondary">На первую страницу</BaseButton>
       </div>
     </div>
 
@@ -150,8 +189,22 @@ onMounted(async () => {
 
 .filters-section {
   display: flex;
-  gap: 16px;
+  gap: 24px;
   margin-bottom: 30px;
+  align-items: end;
   flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 250px;
+}
+
+.filter-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: v-bind('$color-black-1');
 }
 </style>

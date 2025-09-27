@@ -42,8 +42,12 @@ async function apiRequest(endpoint, params = {}) {
  * @param {number} count - Количество элементов на странице
  * @returns {Promise} Данные школ с метаинформацией о пагинации
  */
-export async function getSchools(page = 1, count = 10) {
-  return await apiRequest('/schools', { page, count })
+export async function getSchools(page = 1, count = 10, regionId = null) {
+  const params = { page, count }
+  if (regionId) {
+    params.region_id = regionId
+  }
+  return await apiRequest('/schools', params)
 }
 
 /**
@@ -73,7 +77,7 @@ export function useSchools() {
   const error = ref(null) // Текст ошибки, если есть
   const totalPages = ref(1) // Общее количество страниц
   const currentPage = ref(1) // Текущая активная страница
-
+  const currentRegion = ref(null) // Текущий регион фильтр
   /**
    * Преобразует сложную структуру данных API в плоскую для таблицы
    * @param {Array} schoolsData - Сырые данные из API
@@ -95,14 +99,15 @@ export function useSchools() {
    * @param {number} page - Номер страницы для загрузки
    * @param {number} count - Количество элементов на странице
    */
-  const fetchSchools = async (page = 1, count = 10) => {
+  const fetchSchools = async (page = 1, count = 10, regionId = null) => {
     loading.value = true
     error.value = null
+    currentRegion.value = regionId
 
     try {
       // Защита от выхода за границы допустимых страниц
       const safePage = Math.max(1, Math.min(page, 100))
-      const response = await getSchools(safePage, count)
+      const response = await getSchools(safePage, count, regionId)
 
       // Преобразуем и сохраняем данные
       schools.value = transformSchoolData(response.list || [])
@@ -111,7 +116,9 @@ export function useSchools() {
       totalPages.value = Math.min(response.pages_count || 1, 100)
       currentPage.value = safePage
 
-      console.log(`✅ Страница ${safePage} загружена, школ: ${schools.value.length}`)
+      console.log(
+        `✅ Страница ${safePage} загружена, регион: ${regionId || 'все'}, школ: ${schools.value.length}`,
+      )
     } catch (err) {
       // Обработка ошибок API (включая 500 ошибки на страницах 4, 7, 17)
       console.log(`Ошибка загрузки страницы ${page}:`, err.message)
@@ -122,6 +129,14 @@ export function useSchools() {
     }
   }
 
+  const setRegionFilter = (regionId) => {
+    currentPage.value = 1 // сбрасываем на первую страницу при смене фильтра
+    fetchSchools(1, 10, regionId)
+  }
+
+  const clearError = () => {
+    error.value = null
+  }
   // Экспортируем состояния и методы для использования в компонентах
   return {
     schools, // Реактивный список школ
@@ -129,6 +144,9 @@ export function useSchools() {
     error, // Текст ошибки
     totalPages, // Общее количество страниц
     currentPage, // Текущая страница
+    currentRegion, // Текущий фильтр
+    setRegionFilter, // Метод для фильтрации региона
     fetchSchools, // Метод для загрузки данных
+    clearError, // Сброс ошибки
   }
 }
