@@ -1,0 +1,9 @@
+@import '@/scss/variables';
+@import '@/scss/base';
+
+// Твои глобальные стили
+body {
+  font-family: 'Gotham Pro', Arial, sans-serif;
+  background-color: $color-white;
+  color: $color-black-1;
+}
