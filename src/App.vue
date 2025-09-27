@@ -5,10 +5,16 @@ import BaseInput from './components/UI/BaseInput.vue'
 import BaseButton from './components/UI/BaseButton.vue'
 import { useSchools } from './services/schoolsApi.js'
 import { onMounted, ref } from 'vue'
+import BaseSelect from './components/UI/BaseSelect.vue'
+import { getRegions } from './services/schoolsApi.js'
 
 const { schools, loading, error, totalPages, currentPage, fetchSchools } = useSchools()
+
 const searchValue = ref('')
 const errorPage = ref(1)
+// Добавляем новые данные для фильтров
+const regions = ref([])
+const selectedRegion = ref('')
 
 const tableColumns = ref([
   { key: 'name', label: 'Название', sortable: true },
@@ -16,10 +22,6 @@ const tableColumns = ref([
   { key: 'address', label: 'Адрес', sortable: false },
   { key: 'education_level', label: 'Уровень образования', sortable: true },
 ])
-
-onMounted(() => {
-  fetchSchools(1, 10)
-})
 
 const handlePageChange = async (page) => {
   errorPage.value = page
@@ -34,12 +36,32 @@ const handleSearch = () => {
 const handleRetry = () => {
   fetchSchools(currentPage.value, 10)
 }
+
+onMounted(async () => {
+  // Загружаем школы
+  await fetchSchools(1, 10)
+
+  // Загружаем регионы для фильтра
+  try {
+    regions.value = await getRegions()
+    console.log('✅ Регионы загружены:', regions.value.length, 'шт.')
+  } catch (error) {
+    console.error('❌ Ошибка загрузки регионов:', error)
+  }
+})
 </script>
 
 <template>
   <div id="app">
     <h1>Таблица учреждений</h1>
-
+    <!-- Добавляем фильтры -->
+    <div class="filters-section">
+      <BaseSelect
+        v-model="selectedRegion"
+        :options="regions.map((r) => ({ value: r.id, label: r.name }))"
+        placeholder="Все регионы"
+      />
+    </div>
     <div class="search-section">
       <BaseInput v-model="searchValue" placeholder="Поиск школ..." @input="handleSearch" />
     </div>
@@ -124,5 +146,12 @@ const handleRetry = () => {
 .search-section {
   margin-bottom: 30px;
   max-width: 400px;
+}
+
+.filters-section {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
 }
 </style>
