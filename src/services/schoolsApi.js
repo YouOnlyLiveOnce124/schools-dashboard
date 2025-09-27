@@ -2,86 +2,133 @@ import { ref } from 'vue'
 
 const API_BASE_URL = 'https://schooldb.skillline.ru/api'
 
+/**
+ * Базовый HTTP-клиент для работы с API школ
+ * Обрабатывает ошибки и преобразует ответы в единый формат
+ */
 async function apiRequest(endpoint, params = {}) {
   try {
+    // Формируем URL с параметрами запроса
     const queryParams = new URLSearchParams(params).toString()
     const url = `${API_BASE_URL}${endpoint}${queryParams ? `?${queryParams}` : ''}`
 
+    console.log('🔄 API Request:', url) // Логируем для отладки
+
     const response = await fetch(url)
 
+    // Проверяем HTTP статус ответа
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
     const data = await response.json()
 
+    // API возвращает {status: boolean, message: string, data: any}
+    // Проверяем успешность операции на стороне сервера
     if (!data.status) {
       throw new Error(data.message || 'API returned false status')
     }
 
-    return data.data
+    return data.data // Возвращаем только data часть ответа
   } catch (error) {
-    console.error('API Request failed:', error)
-    throw error
+    console.error('❌ API Request failed:', error)
+    throw error // Пробрасываем ошибку выше для обработки в компонентах
   }
 }
 
+/**
+ * Получает список школ с пагинацией
+ * @param {number} page - Номер страницы (начинается с 1)
+ * @param {number} count - Количество элементов на странице
+ * @returns {Promise} Данные школ с метаинформацией о пагинации
+ */
 export async function getSchools(page = 1, count = 10) {
   return await apiRequest('/schools', { page, count })
 }
 
+/**
+ * Получает список всех регионов для фильтрации
+ * @returns {Promise} Массив регионов {id, name}
+ */
 export async function getRegions() {
   return await apiRequest('/regions')
 }
 
+/**
+ * Получает список федеральных округов
+ * @returns {Promise} Массив федеральных округов
+ */
 export async function getFederalDistricts() {
   return await apiRequest('/federalDistricts')
 }
 
+/**
+ * Composition API хук для работы со школами
+ * Предоставляет реактивные данные и методы для управления состоянием
+ */
 export function useSchools() {
-  const schools = ref([])
-  const loading = ref(false)
-  const error = ref(null)
-  const totalPages = ref(1)
-  const currentPage = ref(1)
+  // Реактивные состояния
+  const schools = ref([]) // Список школ для текущей страницы
+  const loading = ref(false) // Флаг загрузки данных
+  const error = ref(null) // Текст ошибки, если есть
+  const totalPages = ref(1) // Общее количество страниц
+  const currentPage = ref(1) // Текущая активная страница
 
+  /**
+   * Преобразует сложную структуру данных API в плоскую для таблицы
+   * @param {Array} schoolsData - Сырые данные из API
+   * @returns {Array} Упрощенная структура для отображения
+   */
   const transformSchoolData = (schoolsData) => {
     return schoolsData.map((school) => ({
-      uuid: school.uuid,
-      name: school.edu_org?.full_name || 'Нет названия',
-      region: school.edu_org?.region?.name || 'Не указан',
-      address: school.edu_org?.contact_info?.post_address || 'Адрес не указан',
+      uuid: school.uuid, // Уникальный идентификатор школы
+      name: school.edu_org?.full_name || 'Нет названия', // Полное название школы
+      region: school.edu_org?.region?.name || 'Не указан', // Название региона
+      address: school.edu_org?.contact_info?.post_address || 'Адрес не указан', // Почтовый адрес
       education_level:
-        school.supplements?.[0]?.educational_programs?.[0]?.edu_level?.name || 'Не указан',
+        school.supplements?.[0]?.educational_programs?.[0]?.edu_level?.name || 'Не указан', // Уровень образования
     }))
   }
 
+  /**
+   * Загружает данные школ для указанной страницы
+   * @param {number} page - Номер страницы для загрузки
+   * @param {number} count - Количество элементов на странице
+   */
   const fetchSchools = async (page = 1, count = 10) => {
     loading.value = true
     error.value = null
 
     try {
+      // Защита от выхода за границы допустимых страниц
       const safePage = Math.max(1, Math.min(page, 100))
       const response = await getSchools(safePage, count)
 
+      // Преобразуем и сохраняем данные
       schools.value = transformSchoolData(response.list || [])
+
+      // Ограничиваем общее количество страниц для стабильности UI
       totalPages.value = Math.min(response.pages_count || 1, 100)
       currentPage.value = safePage
+
+      console.log(`✅ Страница ${safePage} загружена, школ: ${schools.value.length}`)
     } catch (err) {
+      // Обработка ошибок API (включая 500 ошибки на страницах 4, 7, 17)
       console.log(`Ошибка загрузки страницы ${page}:`, err.message)
       error.value = `Страница ${page} временно недоступна. Попробуйте другую страницу.`
-      schools.value = []
+      schools.value = [] // Очищаем данные при ошибке
     } finally {
-      loading.value = false
+      loading.value = false // Снимаем флаг загрузки в любом случае
     }
   }
 
+  // Экспортируем состояния и методы для использования в компонентах
   return {
-    schools,
-    loading,
-    error,
-    totalPages,
-    currentPage,
-    fetchSchools,
+    schools, // Реактивный список школ
+    loading, // Флаг загрузки
+    error, // Текст ошибки
+    totalPages, // Общее количество страниц
+    currentPage, // Текущая страница
+    fetchSchools, // Метод для загрузки данных
   }
 }
