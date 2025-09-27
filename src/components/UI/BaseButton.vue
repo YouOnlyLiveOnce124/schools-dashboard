@@ -1,4 +1,5 @@
 <!-- BaseButton.vue -->
+
 <script setup>
 // Props definition with Composition API
 defineProps({
