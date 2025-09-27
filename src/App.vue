@@ -43,25 +43,66 @@ const tableColumns = ref([
   { key: 'education_level', label: 'Уровень образования', sortable: true },
 ])
 
+// УМНЫЙ handlePageChange: если страница недоступна - пробуем соседнюю
 const handlePageChange = async (page) => {
   errorPage.value = page
   clearError()
-  await fetchSchools(page, 10, currentRegion.value)
+
+  try {
+    await fetchSchools(page, 10, currentRegion.value)
+  } catch (err) {
+    console.log(err.value)
+    // Если выбранная страница недоступна - пробуем следующую доступную
+    console.log(`Страница ${page} недоступна, ищем ближайшую доступную...`)
+
+    // Пробуем следующую страницу
+    if (page < totalPages.value) {
+      await handlePageChange(page + 1)
+    }
+    // Если нет следующей - пробуем предыдущую
+    else if (page > 1) {
+      await handlePageChange(page - 1)
+    }
+    // Если вообще нет страниц - показываем ошибку (крайний случай)
+    else {
+      error.value = `Все страницы временно недоступны. Попробуйте позже.`
+    }
+  }
 }
 
+// УМНЫЙ handleFirstPage: пробуем страницу 1, если не получается - следующую
 const handleFirstPage = async () => {
   clearError()
-  await fetchSchools(1, 10, currentRegion.value)
+  try {
+    await fetchSchools(1, 10, currentRegion.value)
+  } catch (err) {
+    console.log(err.value)
+    // Если первая страница недоступна (крайний случай) - пробуем вторую
+    console.log('Страница 1 недоступна, пробуем страницу 2...')
+    await fetchSchools(2, 10, currentRegion.value)
+  }
 }
-
 const handleSearch = () => {
   currentPage.value = 1
   fetchSchools(1, 10, currentRegion.value)
 }
 
+// УМНЫЙ handleRetry: пробуем текущую страницу, если не получается - предыдущую
 const handleRetry = async () => {
   clearError()
-  await fetchSchools(currentPage.value, 10, currentRegion.value)
+  try {
+    await fetchSchools(currentPage.value, 10, currentRegion.value)
+  } catch (err) {
+    console.log(err.value)
+    // Если текущая страница все еще недоступна - пробуем предыдущую
+    if (currentPage.value > 1) {
+      console.log(`Страница ${currentPage.value} недоступна, пробуем предыдущую...`)
+      await fetchSchools(currentPage.value - 1, 10, currentRegion.value)
+    } else {
+      // Если это первая страница недоступна (маловероятно) - пробуем следующую
+      await fetchSchools(2, 10, currentRegion.value)
+    }
+  }
 }
 
 // Выносим загрузку регионов в отдельную функцию
