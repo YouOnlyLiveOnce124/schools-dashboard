@@ -114,13 +114,13 @@ export function useSchools() {
 
       if (isAppend) {
         schools.value = [...schools.value, ...newSchools]
-        searchSchools.value = [...searchSchools.value, ...newSchools] // ← НАКАПЛИВАЕМ ДЛЯ ПОИСКА
+        searchSchools.value = [...searchSchools.value, ...newSchools]
       } else {
         schools.value = newSchools
         if (page === 1) {
-          searchSchools.value = newSchools // первая страница
+          searchSchools.value = newSchools
         } else {
-          searchSchools.value = [...searchSchools.value, ...newSchools] // ← НАКАПЛИВАЕМ ДЛЯ ПОИСКА
+          searchSchools.value = [...searchSchools.value, ...newSchools]
         }
       }
 
@@ -147,7 +147,7 @@ export function useSchools() {
 
   return {
     schools,
-    searchSchools, // ← ЭКСПОРТИРУЕМ
+    searchSchools,
     loading,
     error,
     totalPages,
