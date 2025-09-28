@@ -49,8 +49,8 @@ export async function getSchools(page = 1, count = 10, regionId = null, status =
   if (regionId) {
     params.region_id = regionId
   }
-  if (status) {
-    params.status = status // ← ДОБАВЛЯЕМ ПАРАМЕТР СТАТУСА
+  if (status && status !== 'all') {
+    params.status = status
   }
   return await apiRequest('/schools', params)
 }
@@ -105,7 +105,13 @@ export function useSchools() {
    * @param {number} page - Номер страницы для загрузки
    * @param {number} count - Количество элементов на странице
    */
-  const fetchSchools = async (page = 1, count = 10, regionId = null, isAppend = false) => {
+  const fetchSchools = async (
+    page = 1,
+    count = 10,
+    regionId = null,
+    isAppend = false,
+    status = null,
+  ) => {
     // Если это НЕ догрузка И страница 1 - очищаем данные
     if (!isAppend && page === 1) {
       schools.value = []
@@ -118,7 +124,7 @@ export function useSchools() {
 
     try {
       const safePage = Math.max(1, Math.min(page, 100))
-      const response = await getSchools(safePage, count, regionId)
+      const response = await getSchools(safePage, count, regionId, status)
 
       const newSchools = transformSchoolData(response.list || [])
 

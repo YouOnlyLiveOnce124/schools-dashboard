@@ -63,7 +63,7 @@ const tableColumns = ref([
   { key: 'address', label: 'Адрес', sortable: false },
   { key: 'education_level', label: 'Уровень образования', sortable: true },
 ])
-
+let isAutoLoading = false
 // ПРАВИЛЬНАЯ ФИЛЬТРАЦИЯ
 const filteredSchools = computed(() => {
   if (selectedStatus.value === 'all') {
@@ -74,25 +74,49 @@ const filteredSchools = computed(() => {
 
   const filtered = schools.value.filter((school) => {
     const schoolStatus = school.status || 'Нет статуса'
-    let shouldInclude = false
 
     if (selectedStatus.value === 'active') {
-      shouldInclude = schoolStatus === 'Действующее'
+      return schoolStatus === 'Действующее'
     } else if (selectedStatus.value === 'inactive') {
-      shouldInclude = schoolStatus === 'Недействующее'
+      return schoolStatus === 'Недействующее'
     }
 
-    console.log(`Школа: ${school.name} | Статус: "${schoolStatus}" | Включить: ${shouldInclude}`)
-    return shouldInclude
+    return false
   })
 
-  console.log('✅ Отфильтровано школ:', filtered.length)
+  console.log('✅ Отфильтровано школ:', filtered.length, 'из', schools.value.length)
+
   return filtered
 })
+// ФУНКЦИЯ ДОГРУЗКИ ДЛЯ ФИЛЬТРОВ
+const loadMoreForFilter = async () => {
+  if (isAutoLoading) return
 
+  isAutoLoading = true
+  const nextPage = currentPage.value + 1
+
+  try {
+    console.log(`📥 Догружаем страницу ${nextPage} для фильтра`)
+    await fetchSchools(nextPage, selectedPageSize.value, currentRegion.value, true)
+
+    console.log(`✅ Догружено. Всего школ: ${schools.value.length}`)
+  } catch (err) {
+    console.log('❌ Ошибка при догрузке:', err.message)
+  } finally {
+    isAutoLoading = false
+  }
+}
 // ПРАВИЛЬНОЕ ОТОБРАЖЕНИЕ ДАННЫХ
 const displayedSchools = computed(() => {
-  return filteredSchools.value
+  if (selectedStatus.value === 'all') {
+    // Для "Все статусы" - только школы текущей страницы API
+    return schools.value
+  } else {
+    // Для фильтров - пагинация на клиенте
+    const startIndex = (filteredCurrentPage.value - 1) * selectedPageSize.value
+    const endIndex = startIndex + selectedPageSize.value
+    return filteredSchools.value.slice(startIndex, endIndex)
+  }
 })
 
 // ПРАВИЛЬНОЕ КОЛИЧЕСТВО СТРАНИЦ
@@ -100,12 +124,14 @@ const filteredTotalPages = computed(() => {
   if (selectedStatus.value === 'all') {
     return totalPages.value
   } else {
-    // Для фильтрованных данных считаем страницы на основе количества записей
-    const totalFiltered = filteredSchools.value.length
-    return Math.ceil(totalFiltered / selectedPageSize.value)
+    return Math.ceil(filteredSchools.value.length / selectedPageSize.value)
   }
 })
 
+// ТЕКУЩАЯ СТРАНИЦА ДЛЯ ПАГИНАЦИИ
+const currentDisplayPage = computed(() => {
+  return selectedStatus.value === 'all' ? currentPage.value : filteredCurrentPage.value
+})
 // WATCHERS
 watch(selectedRegion, (newRegionId) => {
   currentPage.value = 1
@@ -113,9 +139,20 @@ watch(selectedRegion, (newRegionId) => {
   fetchSchools(1, selectedPageSize.value, finalRegionId, false)
 })
 
-watch(selectedStatus, () => {
+watch(selectedStatus, (newStatus, oldStatus) => {
   filteredCurrentPage.value = 1
-  currentPage.value = 1
+
+  // Если возвращаемся к "Все статусы" из фильтра - сбрасываем на первую страницу API
+  if (newStatus === 'all' && oldStatus !== 'all') {
+    console.log('🔄 Возврат к "Все статусы" - сбрасываем на первую страницу')
+    currentPage.value = 1
+    fetchSchools(1, selectedPageSize.value, currentRegion.value, false)
+  }
+
+  // Если переходим к фильтру - сбрасываем страницу фильтра
+  if (newStatus !== 'all' && oldStatus === 'all') {
+    filteredCurrentPage.value = 1
+  }
 })
 
 watch(selectedType, (newType) => {
@@ -124,7 +161,20 @@ watch(selectedType, (newType) => {
     selectedType.value = 'all'
   }
 })
+watch([selectedStatus, filteredSchools], ([newStatus, newFiltered]) => {
+  if (
+    newStatus !== 'all' &&
+    newFiltered.length < selectedPageSize.value &&
+    !loading.value &&
+    !isAutoLoading &&
+    schools.value.length < 200
+  ) {
+    // Ограничим до 200 школ
 
+    console.log('🔄 Автодогрузка для фильтра...')
+    loadMoreForFilter()
+  }
+})
 // ОБРАБОТЧИКИ
 const handlePageSizeChange = (newSize) => {
   selectedPageSize.value = newSize
@@ -184,8 +234,10 @@ const handlePageChange = async (page) => {
   clearError()
 
   if (selectedStatus.value === 'all') {
+    // Для "Все статусы" - обычная загрузка
     await fetchSchools(page, selectedPageSize.value, currentRegion.value, false)
   } else {
+    // Для фильтров - меняем страницу в отфильтрованных данных
     filteredCurrentPage.value = page
   }
 }
@@ -310,7 +362,7 @@ onMounted(async () => {
 
       <BasePagination
         v-if="filteredTotalPages > 1"
-        :current-page="selectedStatus === 'all' ? currentPage : filteredCurrentPage"
+        :current-page="currentDisplayPage"
         :total-pages="filteredTotalPages"
         @page-change="handlePageChange"
       />
