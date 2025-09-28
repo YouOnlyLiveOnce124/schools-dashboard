@@ -16,20 +16,47 @@ const {
   currentPage,
   currentRegion,
   fetchSchools,
-  setRegionFilter,
   clearError,
 } = useSchools()
 
-// Добавляем поисковые данные и лог с ошибкой
 const searchValue = ref('')
 const errorPage = ref(1)
-// Добавляем новые данные для фильтров
 const regions = ref([])
 const selectedRegion = ref('')
-// ДОБАВЛЯЕМ РЕАКТИВНЫЕ ДАННЫЕ ДЛЯ ВЫБОРА
-const selectedSchools = ref([]) // Массив UUID выбранных школ
+const filteredCurrentPage = ref(1)
 
-// Добавляем данные для таблицы
+// ДАННЫЕ ДЛЯ ФИЛЬТРОВ
+const schoolTypes = ref([
+  { value: 'all', label: 'Все виды' },
+  { value: 'school', label: 'Школы' },
+  { value: 'college', label: 'Колледжи' },
+  { value: 'university', label: 'Университеты' },
+])
+
+const statusTypes = ref([
+  { value: 'all', label: 'Все статусы' },
+  { value: 'active', label: 'Активные' },
+  { value: 'inactive', label: 'Неактивные' },
+])
+
+const selectedType = ref('all')
+const selectedStatus = ref('all')
+
+// ПАГИНАЦИЯ
+const pageSizes = ref([10, 25, 50])
+const selectedPageSize = ref(10)
+
+// ВЫБОР ШКОЛ
+const selectedSchools = ref([])
+const isIndeterminate = computed(() => {
+  if (filteredSchools.value.length === 0) return false
+  const selectedOnCurrentPage = filteredSchools.value.filter((school) =>
+    selectedSchools.value.includes(school.uuid),
+  ).length
+  return selectedOnCurrentPage > 0 && selectedOnCurrentPage < filteredSchools.value.length
+})
+
+// КОЛОНКИ ТАБЛИЦЫ
 const tableColumns = ref([
   { key: 'name', label: 'Название', sortable: true },
   { key: 'region', label: 'Регион', sortable: true },
@@ -37,50 +64,90 @@ const tableColumns = ref([
   { key: 'education_level', label: 'Уровень образования', sortable: true },
 ])
 
-// Watcher для отслеживания изменения региона
-watch(selectedRegion, (newRegionId) => {
-  // Если выбрано пустое значение (Все регионы) - сбрасываем фильтр
-  if (newRegionId === '') {
-    setRegionFilter(null)
-  } else if (newRegionId) {
-    setRegionFilter(newRegionId)
+// ПРАВИЛЬНАЯ ФИЛЬТРАЦИЯ
+const filteredSchools = computed(() => {
+  if (selectedStatus.value === 'all') {
+    return schools.value
+  }
+
+  console.log('🔍 ФИЛЬТРАЦИЯ ПО СТАТУСУ:', selectedStatus.value)
+
+  const filtered = schools.value.filter((school) => {
+    const schoolStatus = school.status || 'Нет статуса'
+    let shouldInclude = false
+
+    if (selectedStatus.value === 'active') {
+      shouldInclude = schoolStatus === 'Действующее'
+    } else if (selectedStatus.value === 'inactive') {
+      shouldInclude = schoolStatus === 'Недействующее'
+    }
+
+    console.log(`Школа: ${school.name} | Статус: "${schoolStatus}" | Включить: ${shouldInclude}`)
+    return shouldInclude
+  })
+
+  console.log('✅ Отфильтровано школ:', filtered.length)
+  return filtered
+})
+
+// ПРАВИЛЬНОЕ ОТОБРАЖЕНИЕ ДАННЫХ
+const displayedSchools = computed(() => {
+  return filteredSchools.value
+})
+
+// ПРАВИЛЬНОЕ КОЛИЧЕСТВО СТРАНИЦ
+const filteredTotalPages = computed(() => {
+  if (selectedStatus.value === 'all') {
+    return totalPages.value
+  } else {
+    // Для фильтрованных данных считаем страницы на основе количества записей
+    const totalFiltered = filteredSchools.value.length
+    return Math.ceil(totalFiltered / selectedPageSize.value)
   }
 })
 
-// ВЫЧИСЛЯЕМОЕ СВОЙСТВО ДЛЯ INDETERMINATE (частичный выбор)
-const isIndeterminate = computed(() => {
-  if (schools.value.length === 0) return false
-
-  const selectedOnCurrentPage = schools.value.filter((school) =>
-    selectedSchools.value.includes(school.uuid),
-  ).length
-
-  // Indeterminate когда выбрано от 1 до (всего-1) школ на странице
-  return selectedOnCurrentPage > 0 && selectedOnCurrentPage < schools.value.length
+// WATCHERS
+watch(selectedRegion, (newRegionId) => {
+  currentPage.value = 1
+  const finalRegionId = newRegionId === '' ? null : newRegionId
+  fetchSchools(1, selectedPageSize.value, finalRegionId, false)
 })
 
-// ОБРАБОТЧИК ВЫБОРА ВСЕХ ШКОЛ НА ТЕКУЩЕЙ СТРАНИЦЕ
+watch(selectedStatus, () => {
+  filteredCurrentPage.value = 1
+  currentPage.value = 1
+})
+
+watch(selectedType, (newType) => {
+  if (newType !== 'all') {
+    alert('Фильтрация по видам учреждений временно недоступна. API не поддерживает этот параметр.')
+    selectedType.value = 'all'
+  }
+})
+
+// ОБРАБОТЧИКИ
+const handlePageSizeChange = (newSize) => {
+  selectedPageSize.value = newSize
+  currentPage.value = 1
+  fetchSchools(1, newSize, currentRegion.value, false)
+}
+
 const handleSelectAll = (isSelected) => {
   if (isSelected) {
-    // Добавляем все школы текущей страницы
-    const currentPageIds = schools.value.map((school) => school.uuid)
+    const currentPageIds = displayedSchools.value.map((school) => school.uuid)
     selectedSchools.value = [...new Set([...selectedSchools.value, ...currentPageIds])]
   } else {
-    // Убираем все школы текущей страницы
-    const currentPageIds = schools.value.map((school) => school.uuid)
+    const currentPageIds = displayedSchools.value.map((school) => school.uuid)
     selectedSchools.value = selectedSchools.value.filter((id) => !currentPageIds.includes(id))
   }
 }
 
-// ОБРАБОТЧИК ВЫБОРА ОДНОЙ ШКОЛЫ
 const handleSelectSchool = (schoolId, isSelected) => {
   if (isSelected) {
-    // Добавляем школу в выбранные (без дубликатов)
     if (!selectedSchools.value.includes(schoolId)) {
       selectedSchools.value.push(schoolId)
     }
   } else {
-    // Убираем школу из выбранных
     const index = selectedSchools.value.indexOf(schoolId)
     if (index > -1) {
       selectedSchools.value.splice(index, 1)
@@ -88,15 +155,11 @@ const handleSelectSchool = (schoolId, isSelected) => {
   }
 }
 
-/**
- * Обработчик экспорта выбранных данных в CSV
- */
 const handleExport = () => {
   if (selectedSchools.value.length === 0) return
 
   const selectedData = schools.value.filter((school) => selectedSchools.value.includes(school.uuid))
 
-  // Создаем простой текстовый файл
   let textContent = 'Экспорт школ\n\n'
   selectedData.forEach((school) => {
     textContent += `Название: ${school.name}\n`
@@ -106,7 +169,6 @@ const handleExport = () => {
     textContent += '─'.repeat(50) + '\n'
   })
 
-  // Скачиваем как txt
   const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -117,69 +179,33 @@ const handleExport = () => {
   alert(`✅ Экспортировано ${selectedData.length} школ в TXT файл`)
 }
 
-// УМНЫЙ handlePageChange: если страница недоступна - пробуем соседнюю
 const handlePageChange = async (page) => {
   errorPage.value = page
   clearError()
 
-  try {
-    await fetchSchools(page, 10, currentRegion.value)
-  } catch (err) {
-    console.log(err.value)
-    // Если выбранная страница недоступна - пробуем следующую доступную
-    console.log(`Страница ${page} недоступна, ищем ближайшую доступную...`)
-
-    // Пробуем следующую страницу
-    if (page < totalPages.value) {
-      await handlePageChange(page + 1)
-    }
-    // Если нет следующей - пробуем предыдущую
-    else if (page > 1) {
-      await handlePageChange(page - 1)
-    }
-    // Если вообще нет страниц - показываем ошибку (крайний случай)
-    else {
-      error.value = `Все страницы временно недоступны. Попробуйте позже.`
-    }
+  if (selectedStatus.value === 'all') {
+    await fetchSchools(page, selectedPageSize.value, currentRegion.value, false)
+  } else {
+    filteredCurrentPage.value = page
   }
 }
 
-// УМНЫЙ handleFirstPage: пробуем страницу 1, если не получается - следующую
 const handleFirstPage = async () => {
   clearError()
-  try {
-    await fetchSchools(1, 10, currentRegion.value)
-  } catch (err) {
-    console.log(err.value)
-    // Если первая страница недоступна (крайний случай) - пробуем вторую
-    console.log('Страница 1 недоступна, пробуем страницу 2...')
-    await fetchSchools(2, 10, currentRegion.value)
-  }
+  await fetchSchools(1, selectedPageSize.value, currentRegion.value, false)
 }
+
 const handleSearch = () => {
   currentPage.value = 1
-  fetchSchools(1, 10, currentRegion.value)
+  fetchSchools(1, selectedPageSize.value, currentRegion.value, false)
 }
 
-// УМНЫЙ handleRetry: пробуем текущую страницу, если не получается - предыдущую
 const handleRetry = async () => {
   clearError()
-  try {
-    await fetchSchools(currentPage.value, 10, currentRegion.value)
-  } catch (err) {
-    console.log(err.value)
-    // Если текущая страница все еще недоступна - пробуем предыдущую
-    if (currentPage.value > 1) {
-      console.log(`Страница ${currentPage.value} недоступна, пробуем предыдущую...`)
-      await fetchSchools(currentPage.value - 1, 10, currentRegion.value)
-    } else {
-      // Если это первая страница недоступна (маловероятно) - пробуем следующую
-      await fetchSchools(2, 10, currentRegion.value)
-    }
-  }
+  await fetchSchools(currentPage.value, selectedPageSize.value, currentRegion.value, false)
 }
 
-// Выносим загрузку регионов в отдельную функцию
+// ЗАГРУЗКА РЕГИОНОВ
 const loadRegions = async () => {
   try {
     regions.value = await getRegions()
@@ -189,18 +215,31 @@ const loadRegions = async () => {
   }
 }
 
-// Обновленный onMounted
+// ИНИЦИАЛИЗАЦИЯ
 onMounted(async () => {
-  // Параллельно загружаем школы и регионы
-  await Promise.all([fetchSchools(1, 10), loadRegions()])
+  await Promise.all([fetchSchools(1, selectedPageSize.value, null, false), loadRegions()])
 })
 </script>
 
 <template>
   <div id="app">
     <h1>Таблица учреждений</h1>
-    <!-- ДОБАВЛЯЕМ КНОПКУ СКАЧИВАНИЯ -->
-    <div class="header-actions">
+
+    <!-- ВЕРХНЯЯ СТРОКА ФИЛЬТРОВ -->
+    <div class="top-filters">
+      <div class="calendar-placeholder">📅 09 января 2024 - 15 января 2024</div>
+
+      <div class="filter-group">
+        <BaseSelect v-model="selectedType" :options="schoolTypes" placeholder="Все виды" />
+      </div>
+
+      <div class="filter-group">
+        <BaseSelect v-model="selectedStatus" :options="statusTypes" placeholder="Все статусы" />
+      </div>
+    </div>
+
+    <!-- ДЕЙСТВИЯ С ТАБЛИЦЕЙ -->
+    <div class="table-actions">
       <BaseButton
         :disabled="selectedSchools.length === 0"
         @click="handleExport"
@@ -209,15 +248,26 @@ onMounted(async () => {
       >
         📥 СКАЧАТЬ ({{ selectedSchools.length }})
       </BaseButton>
+
+      <div class="records-info">
+        <span class="records-text">Показывать по:</span>
+        <BaseSelect
+          v-model="selectedPageSize"
+          :options="pageSizes.map((size) => ({ value: size, label: String(size) }))"
+          @update:modelValue="handlePageSizeChange"
+          class="page-size-select"
+        />
+      </div>
     </div>
-    <!-- Добавляем фильтры -->
+
+    <!-- ФИЛЬТРЫ ПО РЕГИОНАМ -->
     <div class="filters-section">
       <div class="filter-group">
         <label class="filter-label">Регион:</label>
         <BaseSelect
           v-model="selectedRegion"
           :options="[
-            { value: '', label: 'Все регионы' }, // ← ДОБАВИЛИ ОПЦИЮ СБРОСА
+            { value: '', label: 'Все регионы' },
             ...regions.map((r) => ({ value: r.id, label: r.name })),
           ]"
           placeholder="Выберите регион"
@@ -225,10 +275,12 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- ПОИСК -->
     <div class="search-section">
       <BaseInput v-model="searchValue" placeholder="Поиск школ..." @input="handleSearch" />
     </div>
 
+    <!-- СОДЕРЖИМОЕ -->
     <div v-if="loading" class="status-message">
       <div class="loading-spinner">Загрузка данных...</div>
     </div>
@@ -240,9 +292,7 @@ onMounted(async () => {
       <p class="error-detail">Попробуйте выбрать другую страницу</p>
 
       <div class="button-group">
-        <!-- ИСПРАВЛЯЕМ: сохраняем регион при повторе -->
         <BaseButton @click="handleRetry" variant="primary">Повторить попытку</BaseButton>
-        <!-- ИСПРАВЛЯЕМ: сохраняем регион при переходе на первую страницу -->
         <BaseButton @click="handleFirstPage" variant="secondary">На первую страницу</BaseButton>
       </div>
     </div>
@@ -250,7 +300,7 @@ onMounted(async () => {
     <div v-else>
       <BaseTable
         :columns="tableColumns"
-        :data="schools"
+        :data="displayedSchools"
         :loading="loading"
         :selected-items="selectedSchools"
         :is-indeterminate="isIndeterminate"
@@ -259,9 +309,9 @@ onMounted(async () => {
       />
 
       <BasePagination
-        v-if="totalPages > 1"
-        :current-page="currentPage"
-        :total-pages="totalPages"
+        v-if="filteredTotalPages > 1"
+        :current-page="selectedStatus === 'all' ? currentPage : filteredCurrentPage"
+        :total-pages="filteredTotalPages"
         @page-change="handlePageChange"
       />
     </div>
@@ -269,6 +319,80 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* СТИЛИ ОСТАЮТСЯ ТАКИМИ ЖЕ */
+.top-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.calendar-placeholder {
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  min-width: 250px;
+}
+
+.filter-group {
+  min-width: 150px;
+}
+
+.table-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.records-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.records-text {
+  font-size: 14px;
+  color: #666;
+}
+
+.page-size-select {
+  min-width: 80px;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.download-btn {
+  min-width: 180px;
+}
+
+.filters-section {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 30px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: v-bind('$color-black-1');
+}
+
+.search-section {
+  margin-bottom: 30px;
+  max-width: 400px;
+}
+
 .status-message {
   padding: 40px 30px;
   text-align: center;
@@ -314,41 +438,5 @@ onMounted(async () => {
 .loading-spinner {
   font-size: 18px;
   color: #1976d2;
-}
-
-.search-section {
-  margin-bottom: 30px;
-  max-width: 400px;
-}
-
-.filters-section {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 30px;
-  align-items: end;
-  flex-wrap: wrap;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 250px;
-}
-
-.filter-label {
-  font-weight: 700;
-  font-size: 14px;
-  color: v-bind('$color-black-1');
-}
-
-.header-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 20px;
-}
-
-.download-btn {
-  min-width: 180px;
 }
 </style>

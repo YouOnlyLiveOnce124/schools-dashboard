@@ -37,15 +37,20 @@ async function apiRequest(endpoint, params = {}) {
 }
 
 /**
- * Получает список школ с пагинацией
+ * Получает список школ с пагинацией и фильтрацией
  * @param {number} page - Номер страницы (начинается с 1)
  * @param {number} count - Количество элементов на странице
+ * @param {number} regionId - ID региона для фильтрации
+ * @param {string} status - Статус для фильтрации (active/inactive)
  * @returns {Promise} Данные школ с метаинформацией о пагинации
  */
-export async function getSchools(page = 1, count = 10, regionId = null) {
+export async function getSchools(page = 1, count = 10, regionId = null, status = null) {
   const params = { page, count }
   if (regionId) {
     params.region_id = regionId
+  }
+  if (status) {
+    params.status = status // ← ДОБАВЛЯЕМ ПАРАМЕТР СТАТУСА
   }
   return await apiRequest('/schools', params)
 }
@@ -85,12 +90,13 @@ export function useSchools() {
    */
   const transformSchoolData = (schoolsData) => {
     return schoolsData.map((school) => ({
-      uuid: school.uuid, // Уникальный идентификатор школы
-      name: school.edu_org?.full_name || 'Нет названия', // Полное название школы
-      region: school.edu_org?.region?.name || 'Не указан', // Название региона
-      address: school.edu_org?.contact_info?.post_address || 'Адрес не указан', // Почтовый адрес
+      uuid: school.uuid,
+      name: school.edu_org?.full_name || 'Нет названия',
+      region: school.edu_org?.region?.name || 'Не указан',
+      address: school.edu_org?.contact_info?.post_address || 'Адрес не указан',
       education_level:
-        school.supplements?.[0]?.educational_programs?.[0]?.edu_level?.name || 'Не указан', // Уровень образования
+        school.supplements?.[0]?.educational_programs?.[0]?.edu_level?.name || 'Не указан',
+      status: school.supplements?.[0]?.status?.name || 'Неизвестно',
     }))
   }
 
@@ -99,39 +105,46 @@ export function useSchools() {
    * @param {number} page - Номер страницы для загрузки
    * @param {number} count - Количество элементов на странице
    */
-  const fetchSchools = async (page = 1, count = 10, regionId = null) => {
+  const fetchSchools = async (page = 1, count = 10, regionId = null, isAppend = false) => {
+    // Если это НЕ догрузка И страница 1 - очищаем данные
+    if (!isAppend && page === 1) {
+      schools.value = []
+    }
+    // Для страниц 2+ при обычной навигации - тоже очищаем, но это НЕПРАВИЛЬНО!
+
     loading.value = true
     error.value = null
     currentRegion.value = regionId
 
     try {
-      // Защита от выхода за границы допустимых страниц
       const safePage = Math.max(1, Math.min(page, 100))
       const response = await getSchools(safePage, count, regionId)
 
-      // Преобразуем и сохраняем данные
-      schools.value = transformSchoolData(response.list || [])
+      const newSchools = transformSchoolData(response.list || [])
 
-      // Ограничиваем общее количество страниц для стабильности UI
+      if (isAppend) {
+        // Догрузка - добавляем
+        schools.value = [...schools.value, ...newSchools]
+      } else {
+        // Обычная навигация - ЗАМЕНЯЕМ данные
+        schools.value = newSchools
+      }
+
       totalPages.value = Math.min(response.pages_count || 1, 100)
       currentPage.value = safePage
 
       console.log(
-        `✅ Страница ${safePage} загружена, регион: ${regionId || 'все'}, школ: ${schools.value.length}`,
+        `✅ Страница ${safePage} загружена, школ: ${schools.value.length}, догрузка: ${isAppend}`,
       )
     } catch (err) {
-      // Обработка ошибок API (включая 500 ошибки на страницах 4, 7, 17)
       console.log(`Ошибка загрузки страницы ${page}:`, err.message)
       error.value = `Страница ${page} временно недоступна. Попробуйте другую страницу.`
-      schools.value = [] // Очищаем данные при ошибке
+      if (!isAppend && page === 1) {
+        schools.value = []
+      }
     } finally {
-      loading.value = false // Снимаем флаг загрузки в любом случае
+      loading.value = false
     }
-  }
-
-  const setRegionFilter = (regionId) => {
-    currentPage.value = 1 // сбрасываем на первую страницу при смене фильтра
-    fetchSchools(1, 10, regionId)
   }
 
   const clearError = () => {
@@ -145,7 +158,6 @@ export function useSchools() {
     totalPages, // Общее количество страниц
     currentPage, // Текущая страница
     currentRegion, // Текущий фильтр
-    setRegionFilter, // Метод для фильтрации региона
     fetchSchools, // Метод для загрузки данных
     clearError, // Сброс ошибки
   }
