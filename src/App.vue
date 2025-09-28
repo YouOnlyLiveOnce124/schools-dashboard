@@ -20,6 +20,7 @@ const {
 } = useSchools()
 
 const searchValue = ref('')
+const searchTimeout = ref(null)
 const errorPage = ref(1)
 const regions = ref([])
 const selectedRegion = ref('')
@@ -66,25 +67,31 @@ const tableColumns = ref([
 let isAutoLoading = false
 // ПРАВИЛЬНАЯ ФИЛЬТРАЦИЯ
 const filteredSchools = computed(() => {
-  if (selectedStatus.value === 'all') {
-    return schools.value
+  let filtered = schools.value
+
+  // 1. ФИЛЬТРАЦИЯ ПО СТАТУСУ
+  if (selectedStatus.value !== 'all') {
+    filtered = filtered.filter((school) => {
+      const schoolStatus = school.status || 'Нет статуса'
+      if (selectedStatus.value === 'active') {
+        return schoolStatus === 'Действующее'
+      } else if (selectedStatus.value === 'inactive') {
+        return schoolStatus === 'Недействующее'
+      }
+      return false
+    })
   }
 
-  console.log('🔍 ФИЛЬТРАЦИЯ ПО СТАТУСУ:', selectedStatus.value)
+  // 2. ФИЛЬТРАЦИЯ ПО ПОИСКУ
+  if (searchValue.value.trim() !== '') {
+    const searchTerm = searchValue.value.toLowerCase().trim()
+    filtered = filtered.filter((school) => {
+      // Ищем в названии школы
+      return school.name.toLowerCase().includes(searchTerm)
+    })
 
-  const filtered = schools.value.filter((school) => {
-    const schoolStatus = school.status || 'Нет статуса'
-
-    if (selectedStatus.value === 'active') {
-      return schoolStatus === 'Действующее'
-    } else if (selectedStatus.value === 'inactive') {
-      return schoolStatus === 'Недействующее'
-    }
-
-    return false
-  })
-
-  console.log('✅ Отфильтровано школ:', filtered.length, 'из', schools.value.length)
+    console.log('✅ Найдено школ:', filtered.length, 'по запросу:', searchTerm)
+  }
 
   return filtered
 })
@@ -108,35 +115,33 @@ const loadMoreForFilter = async () => {
 }
 // ПРАВИЛЬНОЕ ОТОБРАЖЕНИЕ ДАННЫХ
 const displayedSchools = computed(() => {
-  if (selectedStatus.value === 'all') {
-    // Для "Все статусы" - только школы текущей страницы API
-    return schools.value
-  } else {
-    // Для фильтров - пагинация на клиенте
+  // ЕСЛИ ЕСТЬ ПОИСК ИЛИ ФИЛЬТР ПО СТАТУСУ - используем клиентскую пагинацию
+  if (searchValue.value.trim() !== '' || selectedStatus.value !== 'all') {
     const startIndex = (filteredCurrentPage.value - 1) * selectedPageSize.value
     const endIndex = startIndex + selectedPageSize.value
     return filteredSchools.value.slice(startIndex, endIndex)
+  } else {
+    // "Все статусы" и нет поиска - обычная API пагинация
+    return schools.value
   }
 })
 
 // ПРАВИЛЬНОЕ КОЛИЧЕСТВО СТРАНИЦ
 const filteredTotalPages = computed(() => {
-  if (selectedStatus.value === 'all') {
-    return totalPages.value
-  } else {
+  if (searchValue.value.trim() !== '' || selectedStatus.value !== 'all') {
     return Math.ceil(filteredSchools.value.length / selectedPageSize.value)
+  } else {
+    return totalPages.value
   }
 })
 
 // ТЕКУЩАЯ СТРАНИЦА ДЛЯ ПАГИНАЦИИ
 const currentDisplayPage = computed(() => {
-  return selectedStatus.value === 'all' ? currentPage.value : filteredCurrentPage.value
-})
-// WATCHERS
-watch(selectedRegion, (newRegionId) => {
-  currentPage.value = 1
-  const finalRegionId = newRegionId === '' ? null : newRegionId
-  fetchSchools(1, selectedPageSize.value, finalRegionId, false)
+  if (searchValue.value.trim() !== '' || selectedStatus.value !== 'all') {
+    return filteredCurrentPage.value
+  } else {
+    return currentPage.value
+  }
 })
 
 watch(selectedStatus, (newStatus, oldStatus) => {
@@ -179,7 +184,14 @@ watch([selectedStatus, filteredSchools], ([newStatus, newFiltered]) => {
 const handlePageSizeChange = (newSize) => {
   selectedPageSize.value = newSize
   currentPage.value = 1
-  fetchSchools(1, newSize, currentRegion.value, false)
+  fetchSchools(
+    1,
+    newSize,
+    currentRegion.value,
+    false,
+    selectedStatus.value === 'all' ? null : selectedStatus.value,
+    searchValue.value || null,
+  )
 }
 
 const handleSelectAll = (isSelected) => {
@@ -233,28 +245,51 @@ const handlePageChange = async (page) => {
   errorPage.value = page
   clearError()
 
-  if (selectedStatus.value === 'all') {
-    // Для "Все статусы" - обычная загрузка
-    await fetchSchools(page, selectedPageSize.value, currentRegion.value, false)
-  } else {
-    // Для фильтров - меняем страницу в отфильтрованных данных
+  if (searchValue.value.trim() !== '' || selectedStatus.value !== 'all') {
+    // Для поиска/фильтров - клиентская пагинация
     filteredCurrentPage.value = page
+  } else {
+    // Для "Все статусы" - API пагинация
+    await fetchSchools(page, selectedPageSize.value, currentRegion.value, false)
   }
 }
 
 const handleFirstPage = async () => {
   clearError()
-  await fetchSchools(1, selectedPageSize.value, currentRegion.value, false)
+  await fetchSchools(
+    1,
+    selectedPageSize.value,
+    currentRegion.value,
+    false,
+    selectedStatus.value === 'all' ? null : selectedStatus.value,
+    searchValue.value || null,
+  )
 }
 
+// ФУНКЦИЯ ПОИСКА С DEBOUNCE
 const handleSearch = () => {
-  currentPage.value = 1
-  fetchSchools(1, selectedPageSize.value, currentRegion.value, false)
+  clearTimeout(searchTimeout.value)
+
+  searchTimeout.value = setTimeout(() => {
+    console.log('🔍 Поиск по:', searchValue.value)
+    console.log('📊 Всего школ в памяти:', schools.value.length)
+
+    // Просто сбрасываем на первую страницу фильтрованных данных
+    filteredCurrentPage.value = 1
+    currentPage.value = 1
+  }, 300)
 }
 
 const handleRetry = async () => {
   clearError()
-  await fetchSchools(currentPage.value, selectedPageSize.value, currentRegion.value, false)
+  await fetchSchools(
+    currentPage.value,
+    selectedPageSize.value,
+    currentRegion.value,
+    false,
+    selectedStatus.value === 'all' ? null : selectedStatus.value,
+    searchValue.value || null,
+  )
 }
 
 // ЗАГРУЗКА РЕГИОНОВ
@@ -266,7 +301,19 @@ const loadRegions = async () => {
     console.error('❌ Ошибка загрузки регионов:', error)
   }
 }
-
+// ФУНКЦИЯ СБРОСА ПОИСКА
+const clearSearch = async () => {
+  searchValue.value = ''
+  currentPage.value = 1
+  await fetchSchools(
+    1,
+    selectedPageSize.value,
+    currentRegion.value,
+    false,
+    selectedStatus.value === 'all' ? null : selectedStatus.value,
+    null, // ← СБРАСЫВАЕМ ПОИСК
+  )
+}
 // ИНИЦИАЛИЗАЦИЯ
 onMounted(async () => {
   await Promise.all([fetchSchools(1, selectedPageSize.value, null, false), loadRegions()])
@@ -329,9 +376,27 @@ onMounted(async () => {
 
     <!-- ПОИСК -->
     <div class="search-section">
-      <BaseInput v-model="searchValue" placeholder="Поиск школ..." @input="handleSearch" />
+      <div class="search-with-clear">
+        <BaseInput
+          v-model="searchValue"
+          placeholder="Поиск по названию школы..."
+          @input="handleSearch"
+        />
+        <BaseButton
+          v-if="searchValue"
+          @click="clearSearch"
+          variant="secondary"
+          class="clear-search-btn"
+        >
+          ×
+        </BaseButton>
+      </div>
+      <div v-if="searchValue.trim() !== ''" class="search-results-info">
+        🔍 Найдено: <strong>{{ filteredSchools.length }}</strong> школ по запросу "{{
+          searchValue
+        }}"
+      </div>
     </div>
-
     <!-- СОДЕРЖИМОЕ -->
     <div v-if="loading" class="status-message">
       <div class="loading-spinner">Загрузка данных...</div>
@@ -490,5 +555,26 @@ onMounted(async () => {
 .loading-spinner {
   font-size: 18px;
   color: #1976d2;
+}
+
+.search-with-clear {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 400px;
+}
+
+.clear-search-btn {
+  min-width: 40px;
+  padding: 8px;
+}
+
+.search-results-info {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 4px;
+  font-size: 14px;
 }
 </style>

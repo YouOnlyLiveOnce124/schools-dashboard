@@ -52,6 +52,7 @@ export async function getSchools(page = 1, count = 10, regionId = null, status =
   if (status && status !== 'all') {
     params.status = status
   }
+  // УБИРАЕМ search - API его не поддерживает
   return await apiRequest('/schools', params)
 }
 
@@ -111,6 +112,7 @@ export function useSchools() {
     regionId = null,
     isAppend = false,
     status = null,
+    search = null,
   ) => {
     // Если это НЕ догрузка И страница 1 - очищаем данные
     if (!isAppend && page === 1) {
@@ -124,7 +126,7 @@ export function useSchools() {
 
     try {
       const safePage = Math.max(1, Math.min(page, 100))
-      const response = await getSchools(safePage, count, regionId, status)
+      const response = await getSchools(safePage, count, regionId, status, search)
 
       const newSchools = transformSchoolData(response.list || [])
 
