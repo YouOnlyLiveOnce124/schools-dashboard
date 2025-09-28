@@ -88,13 +88,33 @@ const handleSelectSchool = (schoolId, isSelected) => {
   }
 }
 
-// ОБРАБОТЧИК ЭКСПОРТА ВЫБРАННЫХ ДАННЫХ
+/**
+ * Обработчик экспорта выбранных данных в CSV
+ */
 const handleExport = () => {
   if (selectedSchools.value.length === 0) return
 
-  console.log('📤 Экспорт выбранных школ:', selectedSchools.value)
-  // Здесь будет логика экспорта в CSV
-  alert(`Экспорт ${selectedSchools.value.length} школ в CSV (скоро будет реализовано)`)
+  const selectedData = schools.value.filter((school) => selectedSchools.value.includes(school.uuid))
+
+  // Создаем простой текстовый файл
+  let textContent = 'Экспорт школ\n\n'
+  selectedData.forEach((school) => {
+    textContent += `Название: ${school.name}\n`
+    textContent += `Регион: ${school.region}\n`
+    textContent += `Адрес: ${school.address}\n`
+    textContent += `Уровень образования: ${school.education_level}\n`
+    textContent += '─'.repeat(50) + '\n'
+  })
+
+  // Скачиваем как txt
+  const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `schools_export.txt`
+  link.click()
+
+  alert(`✅ Экспортировано ${selectedData.length} школ в TXT файл`)
 }
 
 // УМНЫЙ handlePageChange: если страница недоступна - пробуем соседнюю
