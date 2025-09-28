@@ -77,18 +77,14 @@ export async function getFederalDistricts() {
  * Предоставляет реактивные данные и методы для управления состоянием
  */
 export function useSchools() {
-  // Реактивные состояния
-  const schools = ref([]) // Список школ для текущей страницы
-  const loading = ref(false) // Флаг загрузки данных
-  const error = ref(null) // Текст ошибки, если есть
-  const totalPages = ref(1) // Общее количество страниц
-  const currentPage = ref(1) // Текущая активная страница
-  const currentRegion = ref(null) // Текущий регион фильтр
-  /**
-   * Преобразует сложную структуру данных API в плоскую для таблицы
-   * @param {Array} schoolsData - Сырые данные из API
-   * @returns {Array} Упрощенная структура для отображения
-   */
+  const schools = ref([]) // текущая страница
+  const searchSchools = ref([]) // ← ОТДЕЛЬНЫЙ МАССИВ ТОЛЬКО ДЛЯ ПОИСКА
+  const loading = ref(false)
+  const error = ref(null)
+  const totalPages = ref(1)
+  const currentPage = ref(1)
+  const currentRegion = ref(null)
+
   const transformSchoolData = (schoolsData) => {
     return schoolsData.map((school) => ({
       uuid: school.uuid,
@@ -101,24 +97,10 @@ export function useSchools() {
     }))
   }
 
-  /**
-   * Загружает данные школ для указанной страницы
-   * @param {number} page - Номер страницы для загрузки
-   * @param {number} count - Количество элементов на странице
-   */
-  const fetchSchools = async (
-    page = 1,
-    count = 10,
-    regionId = null,
-    isAppend = false,
-    status = null,
-    search = null,
-  ) => {
-    // Если это НЕ догрузка И страница 1 - очищаем данные
+  const fetchSchools = async (page = 1, count = 10, regionId = null, isAppend = false) => {
     if (!isAppend && page === 1) {
       schools.value = []
     }
-    // Для страниц 2+ при обычной навигации - тоже очищаем, но это НЕПРАВИЛЬНО!
 
     loading.value = true
     error.value = null
@@ -126,23 +108,27 @@ export function useSchools() {
 
     try {
       const safePage = Math.max(1, Math.min(page, 100))
-      const response = await getSchools(safePage, count, regionId, status, search)
+      const response = await getSchools(safePage, count, regionId)
 
       const newSchools = transformSchoolData(response.list || [])
 
       if (isAppend) {
-        // Догрузка - добавляем
         schools.value = [...schools.value, ...newSchools]
+        searchSchools.value = [...searchSchools.value, ...newSchools] // ← НАКАПЛИВАЕМ ДЛЯ ПОИСКА
       } else {
-        // Обычная навигация - ЗАМЕНЯЕМ данные
         schools.value = newSchools
+        if (page === 1) {
+          searchSchools.value = newSchools // первая страница
+        } else {
+          searchSchools.value = [...searchSchools.value, ...newSchools] // ← НАКАПЛИВАЕМ ДЛЯ ПОИСКА
+        }
       }
 
       totalPages.value = Math.min(response.pages_count || 1, 100)
       currentPage.value = safePage
 
       console.log(
-        `✅ Страница ${safePage} загружена, школ: ${schools.value.length}, догрузка: ${isAppend}`,
+        `✅ Страница ${safePage} загружена. Для поиска: ${searchSchools.value.length} школ`,
       )
     } catch (err) {
       console.log(`Ошибка загрузки страницы ${page}:`, err.message)
@@ -158,15 +144,16 @@ export function useSchools() {
   const clearError = () => {
     error.value = null
   }
-  // Экспортируем состояния и методы для использования в компонентах
+
   return {
-    schools, // Реактивный список школ
-    loading, // Флаг загрузки
-    error, // Текст ошибки
-    totalPages, // Общее количество страниц
-    currentPage, // Текущая страница
-    currentRegion, // Текущий фильтр
-    fetchSchools, // Метод для загрузки данных
-    clearError, // Сброс ошибки
+    schools,
+    searchSchools, // ← ЭКСПОРТИРУЕМ
+    loading,
+    error,
+    totalPages,
+    currentPage,
+    currentRegion,
+    fetchSchools,
+    clearError,
   }
 }
