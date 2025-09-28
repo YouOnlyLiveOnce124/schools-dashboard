@@ -6,7 +6,7 @@ import BaseButton from './components/UI/BaseButton.vue'
 import BaseSelect from './components/UI/BaseSelect.vue'
 import { useSchools } from './services/schoolsApi.js'
 import { getRegions } from './services/schoolsApi.js'
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 
 const {
   schools,
@@ -20,11 +20,22 @@ const {
   clearError,
 } = useSchools()
 
+// Добавляем поисковые данные и лог с ошибкой
 const searchValue = ref('')
 const errorPage = ref(1)
 // Добавляем новые данные для фильтров
 const regions = ref([])
 const selectedRegion = ref('')
+// ДОБАВЛЯЕМ РЕАКТИВНЫЕ ДАННЫЕ ДЛЯ ВЫБОРА
+const selectedSchools = ref([]) // Массив UUID выбранных школ
+
+// Добавляем данные для таблицы
+const tableColumns = ref([
+  { key: 'name', label: 'Название', sortable: true },
+  { key: 'region', label: 'Регион', sortable: true },
+  { key: 'address', label: 'Адрес', sortable: false },
+  { key: 'education_level', label: 'Уровень образования', sortable: true },
+])
 
 // Watcher для отслеживания изменения региона
 watch(selectedRegion, (newRegionId) => {
@@ -36,12 +47,55 @@ watch(selectedRegion, (newRegionId) => {
   }
 })
 
-const tableColumns = ref([
-  { key: 'name', label: 'Название', sortable: true },
-  { key: 'region', label: 'Регион', sortable: true },
-  { key: 'address', label: 'Адрес', sortable: false },
-  { key: 'education_level', label: 'Уровень образования', sortable: true },
-])
+// ВЫЧИСЛЯЕМОЕ СВОЙСТВО ДЛЯ INDETERMINATE (частичный выбор)
+const isIndeterminate = computed(() => {
+  if (schools.value.length === 0) return false
+
+  const selectedOnCurrentPage = schools.value.filter((school) =>
+    selectedSchools.value.includes(school.uuid),
+  ).length
+
+  // Indeterminate когда выбрано от 1 до (всего-1) школ на странице
+  return selectedOnCurrentPage > 0 && selectedOnCurrentPage < schools.value.length
+})
+
+// ОБРАБОТЧИК ВЫБОРА ВСЕХ ШКОЛ НА ТЕКУЩЕЙ СТРАНИЦЕ
+const handleSelectAll = (isSelected) => {
+  if (isSelected) {
+    // Добавляем все школы текущей страницы
+    const currentPageIds = schools.value.map((school) => school.uuid)
+    selectedSchools.value = [...new Set([...selectedSchools.value, ...currentPageIds])]
+  } else {
+    // Убираем все школы текущей страницы
+    const currentPageIds = schools.value.map((school) => school.uuid)
+    selectedSchools.value = selectedSchools.value.filter((id) => !currentPageIds.includes(id))
+  }
+}
+
+// ОБРАБОТЧИК ВЫБОРА ОДНОЙ ШКОЛЫ
+const handleSelectSchool = (schoolId, isSelected) => {
+  if (isSelected) {
+    // Добавляем школу в выбранные (без дубликатов)
+    if (!selectedSchools.value.includes(schoolId)) {
+      selectedSchools.value.push(schoolId)
+    }
+  } else {
+    // Убираем школу из выбранных
+    const index = selectedSchools.value.indexOf(schoolId)
+    if (index > -1) {
+      selectedSchools.value.splice(index, 1)
+    }
+  }
+}
+
+// ОБРАБОТЧИК ЭКСПОРТА ВЫБРАННЫХ ДАННЫХ
+const handleExport = () => {
+  if (selectedSchools.value.length === 0) return
+
+  console.log('📤 Экспорт выбранных школ:', selectedSchools.value)
+  // Здесь будет логика экспорта в CSV
+  alert(`Экспорт ${selectedSchools.value.length} школ в CSV (скоро будет реализовано)`)
+}
 
 // УМНЫЙ handlePageChange: если страница недоступна - пробуем соседнюю
 const handlePageChange = async (page) => {
@@ -125,6 +179,17 @@ onMounted(async () => {
 <template>
   <div id="app">
     <h1>Таблица учреждений</h1>
+    <!-- ДОБАВЛЯЕМ КНОПКУ СКАЧИВАНИЯ -->
+    <div class="header-actions">
+      <BaseButton
+        :disabled="selectedSchools.length === 0"
+        @click="handleExport"
+        variant="accent"
+        class="download-btn"
+      >
+        📥 СКАЧАТЬ ({{ selectedSchools.length }})
+      </BaseButton>
+    </div>
     <!-- Добавляем фильтры -->
     <div class="filters-section">
       <div class="filter-group">
@@ -163,7 +228,15 @@ onMounted(async () => {
     </div>
 
     <div v-else>
-      <BaseTable :columns="tableColumns" :data="schools" :loading="loading" />
+      <BaseTable
+        :columns="tableColumns"
+        :data="schools"
+        :loading="loading"
+        :selected-items="selectedSchools"
+        :is-indeterminate="isIndeterminate"
+        @select-all="handleSelectAll"
+        @select-item="handleSelectSchool"
+      />
 
       <BasePagination
         v-if="totalPages > 1"
@@ -247,5 +320,15 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 14px;
   color: v-bind('$color-black-1');
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.download-btn {
+  min-width: 180px;
 }
 </style>
