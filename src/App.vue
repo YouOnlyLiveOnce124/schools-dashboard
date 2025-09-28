@@ -4,6 +4,7 @@ import BasePagination from './components/UI/BasePagination.vue'
 import BaseInput from './components/UI/BaseInput.vue'
 import BaseButton from './components/UI/BaseButton.vue'
 import BaseSelect from './components/UI/BaseSelect.vue'
+import BaseCalendar from './components/UI/BaseCalendar.vue'
 import { useSchools } from './services/schoolsApi.js'
 import { getRegions } from './services/schoolsApi.js'
 import { ref, onMounted, watch, computed } from 'vue'
@@ -48,6 +49,34 @@ const selectedStatus = ref('all')
 const pageSizes = ref([10, 25, 50])
 const selectedPageSize = ref(10)
 
+// ДАННЫЕ ДЛЯ КАЛЕНДАРЯ
+const showCalendar = ref(false)
+const selectedDateRange = ref(null)
+
+const dateRange = computed(() => {
+  if (!selectedDateRange.value || !selectedDateRange.value.start || !selectedDateRange.value.end) {
+    return 'Выберите период'
+  }
+
+  // Правильное создание дат с учетом времени
+  const start = new Date(selectedDateRange.value.start + 'T00:00:00')
+  const end = new Date(selectedDateRange.value.end + 'T00:00:00')
+
+  const format = (date) => {
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}.${month}.${year}`
+  }
+
+  return `${format(start)} - ${format(end)}`
+})
+
+const applyDateRange = (range) => {
+  showCalendar.value = false
+  selectedDateRange.value = range
+  console.log('Выбран диапазон:', range.start, 'до', range.end)
+}
 // ВЫБОР ШКОЛ
 const selectedSchools = ref([])
 const isIndeterminate = computed(() => {
@@ -266,7 +295,7 @@ onMounted(async () => {
 
     <!-- ВЕРХНЯЯ СТРОКА ФИЛЬТРОВ -->
     <div class="top-filters">
-      <div class="calendar-placeholder">📅 09 января 2024 - 15 января 2024</div>
+      <div class="calendar-placeholder" @click="showCalendar = true">📅 {{ dateRange }}</div>
 
       <div class="filter-group">
         <BaseSelect v-model="selectedType" :options="schoolTypes" placeholder="Все виды" />
@@ -276,7 +305,11 @@ onMounted(async () => {
         <BaseSelect v-model="selectedStatus" :options="statusTypes" placeholder="Все статусы" />
       </div>
     </div>
-
+    <div v-if="showCalendar" class="calendar-overlay" @click="showCalendar = false">
+      <div class="calendar-container" @click.stop>
+        <BaseCalendar @save="applyDateRange" @cancel="showCalendar = false" />
+      </div>
+    </div>
     <!-- ДЕЙСТВИЯ С ТАБЛИЦЕЙ -->
     <div class="table-actions">
       <BaseButton
@@ -516,5 +549,22 @@ onMounted(async () => {
   border: 1px solid #bbdefb;
   border-radius: 4px;
   font-size: 14px;
+}
+.calendar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.calendar-container {
+  background: white;
+  border-radius: 8px;
 }
 </style>
