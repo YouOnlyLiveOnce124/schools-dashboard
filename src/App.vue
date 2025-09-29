@@ -11,7 +11,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 
 const {
   schools,
-  searchSchools, // ← МАССИВ ДЛЯ ПОИСКА
+  searchSchools,
   loading,
   error,
   totalPages,
