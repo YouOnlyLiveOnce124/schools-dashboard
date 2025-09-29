@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+const { ref } = Vue
 
 const API_BASE_URL = 'https://schooldb.skillline.ru/api'
 
@@ -128,7 +128,7 @@ export function useSchools() {
       currentPage.value = safePage
 
       console.log(
-        `✅ Страница ${safePage} загружена. Для поиска: ${searchSchools.value.length} школ`,
+        `✅ Страница ${safePage} загружена. Для поиска: ${searchSchools.value.length} школ`
       )
     } catch (err) {
       console.log(`Ошибка загрузки страницы ${page}:`, err.message)
